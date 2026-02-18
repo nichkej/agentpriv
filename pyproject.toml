@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agentpriv"
-version = "0.1.0"
+version = "0.1.1"
 description = "sudo for AI agents - allow, deny, or ask before any tool runs"
 readme = "README.md"
 license = "MIT"

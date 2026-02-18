@@ -38,7 +38,7 @@ def _resolve_policy(name, policy):
     return best_policy
 
 
-def guard(fn, policy="ask", on_deny="raise"):
+def guard(fn, policy="ask", on_deny="raise", prompt=None, log=None):
     """
     Wrap a callable with a permission policy.
 
@@ -49,14 +49,26 @@ def guard(fn, policy="ask", on_deny="raise"):
       - "raise": raise AgentPrivDenied (default, good for plain Python)
       - "return": return an error string (good for frameworks like PydanticAI,
         LangChain, etc. where the LLM sees the tool result)
+
+    prompt is an optional callable(name, args, kwargs) -> bool that replaces
+    the default terminal prompt. Use this to integrate with Slack, a web UI,
+    or any custom approval flow.
+
+    log is an optional callable(str) that receives a message on every denied
+    call. Pass print, logging.warning, or your own function.
     """
     if on_deny not in ("raise", "return"):
         raise ValueError(f"Invalid on_deny {on_deny!r}, must be 'raise' or 'return'")
 
     resolved = _resolve_policy(fn.__name__, policy)
+    _prompt = prompt or ask_human
 
-    def _denied(reason):
+    def _denied(reason, args, kwargs):
+        parts = [repr(a) for a in args] + [f"{k}={v!r}" for k, v in kwargs.items()]
+        sig = ", ".join(parts)
         msg = f"Call to {fn.__name__}() denied by {reason}"
+        if log:
+            log(f"agentpriv: {fn.__name__}({sig}) -> denied by {reason}")
         if on_deny == "return":
             return msg
         raise AgentPrivDenied(msg)
@@ -65,17 +77,17 @@ def guard(fn, policy="ask", on_deny="raise"):
         @functools.wraps(fn)
         async def wrapper(*args, **kwargs):
             if resolved == "deny":
-                return _denied("policy")
-            if resolved == "ask" and not ask_human(fn.__name__, args, kwargs):
-                return _denied("human")
+                return _denied("policy", args, kwargs)
+            if resolved == "ask" and not _prompt(fn.__name__, args, kwargs):
+                return _denied("human", args, kwargs)
             return await fn(*args, **kwargs)
     else:
         @functools.wraps(fn)
         def wrapper(*args, **kwargs):
             if resolved == "deny":
-                return _denied("policy")
-            if resolved == "ask" and not ask_human(fn.__name__, args, kwargs):
-                return _denied("human")
+                return _denied("policy", args, kwargs)
+            if resolved == "ask" and not _prompt(fn.__name__, args, kwargs):
+                return _denied("human", args, kwargs)
             return fn(*args, **kwargs)
 
     return wrapper

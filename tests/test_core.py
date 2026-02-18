@@ -123,11 +123,11 @@ class TestGuardAll:
         with pytest.raises(AgentPrivDenied):
             tools[3]("myrepo")
 
-    def test_default_policy_is_ask(self):
+    @patch("agentpriv.core.ask_human", return_value=False)
+    def test_default_policy_is_ask(self, _):
         tools = guard_all([read_messages])
-        with patch("agentpriv.core.ask_human", return_value=False):
-            with pytest.raises(AgentPrivDenied):
-                tools[0]()
+        with pytest.raises(AgentPrivDenied):
+            tools[0]()
 
 
 # --- on_deny="return" ---
@@ -178,3 +178,24 @@ class TestEdgeCases:
             pass
         safe = guard(documented, policy="allow")
         assert safe.__doc__ == "My doc."
+
+    def test_custom_prompt(self):
+        safe = guard(send_message, policy="ask", prompt=lambda name, args, kwargs: True)
+        assert safe("general", text="hi") == send_message("general", text="hi")
+
+    def test_custom_prompt_denied(self):
+        safe = guard(send_message, policy="ask", prompt=lambda name, args, kwargs: False)
+        with pytest.raises(AgentPrivDenied, match="denied by human"):
+            safe("general", text="hi")
+
+    def test_log_receives_message(self):
+        logged = []
+        safe = guard(delete_channel, policy="deny", on_deny="return", log=logged.append)
+        safe("general")
+        assert len(logged) == 1
+        assert "delete_channel('general') -> denied by policy" in logged[0]
+
+    def test_log_off_by_default(self, capsys):
+        safe = guard(delete_channel, policy="deny", on_deny="return")
+        safe("general")
+        assert capsys.readouterr().err == ""

@@ -91,6 +91,18 @@ safe_delete = tool("Delete DB")(guard(delete_db, policy="ask", on_deny="return")
 agent = Agent(role="DBA", tools=[safe_delete])
 ```
 
+## Custom prompt
+
+By default, `"ask"` mode prompts in the terminal. Pass `prompt=` to use your own approval logic:
+
+```python
+# auto-approve in testing
+safe = guard(delete_db, policy="ask", prompt=lambda name, args, kwargs: True)
+
+# approve via web UI, Slack, or any custom flow
+safe = guard(delete_db, policy="ask", prompt=my_approval_handler)
+```
+
 ## Policy matching
 
 - Patterns use glob syntax (`fnmatch`) against the function's `__name__`
